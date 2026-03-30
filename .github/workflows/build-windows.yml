@@ -127,9 +127,10 @@ jobs:
 
           $maxRetries = 5
           for ($i = 1; $i -le $maxRetries; $i++) {
-            git push && break
+            git push
+            if ($LASTEXITCODE -eq 0) { break }
             if ($i -lt $maxRetries) {
-              Write-Host "Push failed (attempt $i), pulling and retrying..."
+              Write-Host "Push failed (attempt $i/$maxRetries), pulling and retrying..."
               git pull --rebase
             } else {
               Write-Host "Push failed after $maxRetries attempts"
