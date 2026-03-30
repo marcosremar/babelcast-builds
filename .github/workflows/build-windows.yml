@@ -103,40 +103,19 @@ jobs:
       - name: Zip build output
         run: Compress-Archive -Path dist\BabelCast\* -DestinationPath BabelCast-Windows-${{ matrix.arch }}.zip
 
-      - name: Checkout babelcast-builds
-        uses: actions/checkout@v4
-        with:
-          repository: marcosremar/babelcast-builds
-          token: ${{ secrets.GITHUB_TOKEN }}
-          path: builds-repo
-
-      - name: Push build to babelcast-builds (with retry on conflict)
+      - name: Publish release to babelcast-builds
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $SHA = git rev-parse --short HEAD
-          $DATE = Get-Date -Format "yyyy-MM-dd"
-          $TAG = "windows-${{ matrix.arch }}-$DATE-$SHA"
-
-          New-Item -ItemType Directory -Force -Path "builds-repo\windows\${{ matrix.arch }}"
-          Copy-Item BabelCast-Windows-${{ matrix.arch }}.zip "builds-repo\windows\${{ matrix.arch }}\BabelCast-Windows-${{ matrix.arch }}-$TAG.zip"
-
-          cd builds-repo
-          git config user.email "ci@babelcast"
-          git config user.name "BabelCast CI"
-          git add .
-          git commit -m "build: Windows ${{ matrix.arch }} $TAG"
-
-          $maxRetries = 5
-          for ($i = 1; $i -le $maxRetries; $i++) {
-            git push
-            if ($LASTEXITCODE -eq 0) { break }
-            if ($i -lt $maxRetries) {
-              Write-Host "Push failed (attempt $i/$maxRetries), pulling and retrying..."
-              git pull --rebase
-            } else {
-              Write-Host "Push failed after $maxRetries attempts"
-              exit 1
-            }
-          }
+          SHA=$(git rev-parse --short HEAD)
+          DATE=$(date +%Y-%m-%d)
+          TAG="windows-${{ matrix.arch }}-${DATE}-${SHA}"
+          gh release create "$TAG" \
+            "BabelCast-Windows-${{ matrix.arch }}.zip" \
+            --repo marcosremar/babelcast-builds \
+            --title "Windows ${{ matrix.arch }} ${DATE} (${SHA})" \
+            --notes "Automated build — Windows ${{ matrix.arch }}"
 
       - name: Upload artifact (fallback)
         uses: actions/upload-artifact@v4
