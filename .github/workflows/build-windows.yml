@@ -1,0 +1,116 @@
+name: Build Windows
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-latest
+          - arch: arm64
+            runner: windows-11-arm
+
+    runs-on: ${{ matrix.runner }}
+    name: Build Windows ${{ matrix.arch }}
+
+    steps:
+      - name: Checkout babelcast (private)
+        uses: actions/checkout@v4
+        with:
+          repository: marcosremar/babelcast
+          token: ${{ secrets.BABELCAST_TOKEN }}
+          submodules: recursive
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install Bun dependencies (root + ai-gateway)
+        run: |
+          bun install
+          cd ai-gateway && bun install
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install "PySide6>=6.6" "opencv-python>=4.9" "numpy>=1.26" "httpx>=0.27" "pyyaml>=6.0" "mss>=10.0" "websockets>=12.0" sounddevice pillow
+
+      - name: Install PyTorch (x64 — CPU wheel)
+        if: matrix.arch == 'x64'
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install PyTorch (arm64 — PyPI wheel)
+        if: matrix.arch == 'arm64'
+        run: pip install torch
+        continue-on-error: true
+
+      - name: Install VAD + language detector
+        run: pip install silero-vad lingua-language-detector
+        continue-on-error: true
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Generate icon.ico
+        shell: cmd
+        run: python -c "from PIL import Image; img = Image.open('app/resources/icon.png'); img.save('app/resources/icon.ico', format='ICO', sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])"
+        continue-on-error: true
+
+      - name: Build Gateway (bun compile)
+        run: |
+          bun build --compile `
+            --external "@pipecat-ai/client-js" `
+            --external "@pipecat-ai/small-webrtc-transport" `
+            gateway-server.ts `
+            --outfile dist/gateway.exe
+
+      - name: Build Python app (PyInstaller)
+        run: python scripts/pyinstaller_wrapper.py babelcast.spec --noconfirm
+
+      - name: Assemble bundle — copy gateway into app dir
+        run: Copy-Item dist\gateway.exe dist\BabelCast\gateway.exe
+
+      - name: Zip build output
+        run: Compress-Archive -Path dist\BabelCast\* -DestinationPath BabelCast-Windows-${{ matrix.arch }}.zip
+
+      - name: Checkout babelcast-builds
+        uses: actions/checkout@v4
+        with:
+          repository: marcosremar/babelcast-builds
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: builds-repo
+
+      - name: Push build to babelcast-builds
+        run: |
+          $SHA = git rev-parse --short HEAD
+          $DATE = Get-Date -Format "yyyy-MM-dd"
+          $TAG = "windows-${{ matrix.arch }}-$DATE-$SHA"
+
+          New-Item -ItemType Directory -Force -Path "builds-repo\windows\${{ matrix.arch }}"
+          Copy-Item BabelCast-Windows-${{ matrix.arch }}.zip "builds-repo\windows\${{ matrix.arch }}\BabelCast-Windows-${{ matrix.arch }}-$TAG.zip"
+
+          cd builds-repo
+          git config user.email "ci@babelcast"
+          git config user.name "BabelCast CI"
+          git add .
+          git commit -m "build: Windows ${{ matrix.arch }} $TAG"
+          git push
+
+      - name: Upload artifact (fallback)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: BabelCast-Windows-${{ matrix.arch }}
+          path: dist/BabelCast/
+          retention-days: 30
