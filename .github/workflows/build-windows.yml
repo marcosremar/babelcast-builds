@@ -28,11 +28,11 @@ jobs:
           token: ${{ secrets.BABELCAST_TOKEN }}
 
       - name: Checkout ai-gateway submodule
-        run: git submodule update --init ai-gateway
-        env:
-          GIT_CONFIG_COUNT: 1
-          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ secrets.BABELCAST_TOKEN }}@github.com/.insteadOf
-          GIT_CONFIG_VALUE_0: https://github.com/
+        uses: actions/checkout@v4
+        with:
+          repository: marcosremar/ai-gateway
+          token: ${{ secrets.BABELCAST_TOKEN }}
+          path: ai-gateway
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
