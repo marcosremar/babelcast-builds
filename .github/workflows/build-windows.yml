@@ -26,7 +26,13 @@ jobs:
         with:
           repository: marcosremar/babelcast
           token: ${{ secrets.BABELCAST_TOKEN }}
-          submodules: recursive
+
+      - name: Checkout ai-gateway submodule
+        run: git submodule update --init ai-gateway
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ secrets.BABELCAST_TOKEN }}@github.com/.insteadOf
+          GIT_CONFIG_VALUE_0: https://github.com/
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
